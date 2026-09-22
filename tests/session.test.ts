@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearSession, loadSession, saveSession, type SessionRecord } from '../src/session';
 
-const STORAGE_KEY = 'route-auto-input:session';
+const STORAGE_KEY = 'route-auto-input-csv:session';
 
 beforeEach(() => {
   window.localStorage.clear();

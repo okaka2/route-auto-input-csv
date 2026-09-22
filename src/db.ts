@@ -1,7 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Patient } from './types';
 
-const DB_NAME = 'route-auto-input';
+const DB_NAME = 'route-auto-input-csv';
 const DB_VERSION = 1;
 const STORE = 'patients';
 

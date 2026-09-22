@@ -1,6 +1,7 @@
 import './styles.css';
 import { parseBackup, serializeBackup } from './backup';
 import { MAX_STOPS_PER_ROUTE } from './config';
+import { decodeCsvBytes, planCsvImport } from './csvImport';
 import { deletePatient, listPatients, mergePatients, replaceAllPatients, savePatient } from './db';
 import { downloadTextFile, readTextFile } from './fileIo';
 import { DEFAULT_MAP_PROVIDER } from './mapProviders';
@@ -276,7 +277,7 @@ function handleOpenRoute(routeIndex: number): void {
 function handleExport(): void {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    downloadTextFile(`route-auto-input-${date}.json`, serializeBackup(state.patients));
+    downloadTextFile(`route-auto-input-csv-${date}.json`, serializeBackup(state.patients));
     setState(withMessage(state, { kind: 'info', text: 'バックアップを書き出しました。' }));
   } catch {
     setState(withMessage(state, { kind: 'error', text: 'バックアップを書き出せませんでした。' }));
@@ -298,6 +299,30 @@ async function handleImport(file: File, mode: 'replace' | 'merge'): Promise<void
     } else {
       await mergePatients(patients);
     }
+    await reloadPatients({ kind: 'info', text: `${patients.length}件を取り込みました。` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'データを取り込めませんでした。';
+    setState(withMessage(state, { kind: 'error', text: message }));
+  }
+}
+
+/**
+ * 外部のCSVファイルから、名前・住所(建物名を含む)だけを読み取って追加する。
+ * 既存データは消さず、常に追加のみ。名前・住所が完全一致する行は自動でスキップする
+ * (件数のみで、内容は確認ダイアログにもメッセージにも出さない)。
+ */
+async function handleImportCsv(file: File): Promise<void> {
+  try {
+    const text = decodeCsvBytes(await file.arrayBuffer());
+    const plan = planCsvImport(text, state.patients);
+    const question =
+      `${plan.toImport.length}件を今のデータに追加します。` +
+      (plan.skippedDuplicate > 0 ? `(${plan.skippedDuplicate}件は既に登録済みのためスキップします)` : '');
+    if (!window.confirm(question)) {
+      return;
+    }
+    const patients = plan.toImport.map((row) => createPatient(row.name, row.address));
+    await mergePatients(patients);
     await reloadPatients({ kind: 'info', text: `${patients.length}件を取り込みました。` });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'データを取り込めませんでした。';
@@ -365,6 +390,9 @@ function renderScreen(): HTMLElement {
         onExport: handleExport,
         onImport: (file, mode) => {
           void handleImport(file, mode);
+        },
+        onImportCsv: (file) => {
+          void handleImportCsv(file);
         },
         onBack: () => setState(withScreen(state, { name: 'list' })),
       });

@@ -10,7 +10,7 @@ const appNameInHtml: Plugin = {
 };
 
 export default defineConfig({
-  base: '/route-auto-input/',
+  base: '/route-auto-input-csv/',
   plugins: [
     appNameInHtml,
     VitePWA({
@@ -21,8 +21,8 @@ export default defineConfig({
         short_name: APP_NAME,
         description: APP_DESCRIPTION,
         lang: 'ja',
-        start_url: '/route-auto-input/',
-        scope: '/route-auto-input/',
+        start_url: '/route-auto-input-csv/',
+        scope: '/route-auto-input-csv/',
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#0b57d0',

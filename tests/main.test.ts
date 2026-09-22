@@ -9,7 +9,7 @@ import { serializeBackup } from '../src/backup';
 // './openRoute'から読み込んでいるので、そのモジュールごと差し替える。
 vi.mock('../src/openRoute', () => ({ openUrl: vi.fn() }));
 
-const SESSION_KEY = 'route-auto-input:session';
+const SESSION_KEY = 'route-auto-input-csv:session';
 
 async function waitFor(assertion: () => void): Promise<void> {
   await vi.waitFor(assertion, { timeout: 2000, interval: 5 });
@@ -24,7 +24,7 @@ beforeEach(async () => {
   document.body.innerHTML = '<div id="app"></div>';
   vi.resetModules();
   window.localStorage.clear();
-  await deleteDB('route-auto-input');
+  await deleteDB('route-auto-input-csv');
   // vi.resetModules() はモジュールの読み込みキャッシュを消すだけで、
   // vi.mock('../src/openRoute', ...) が作ったモック関数の呼び出し履歴は
   // テストをまたいで残る。呼び出し回数を検証するテストのために、ここでクリアする。
@@ -414,6 +414,56 @@ describe('インポートの確認(cancel/confirm)', () => {
 
     el<HTMLButtonElement>('[data-testid="back-button"]')!.click();
     expect(rows()).toHaveLength(0);
+  });
+});
+
+describe('CSVからの取り込み', () => {
+  async function openSettings(): Promise<void> {
+    await import('../src/main');
+    await waitFor(() => expect(rows()).toHaveLength(0));
+    el<HTMLButtonElement>('[data-testid="settings-button"]')!.click();
+    await waitFor(() => expect(el('[data-testid="import-csv-input"]')).not.toBeNull());
+  }
+
+  function attachCsvFile(text: string, name = 'list.csv'): void {
+    const file = new File([text], name, { type: 'text/csv' });
+    const input = el<HTMLInputElement>('[data-testid="import-csv-input"]')!;
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  }
+
+  it('確認でキャンセルすると取り込まれない', async () => {
+    await openSettings();
+    attachCsvFile('名前,住所\n山田太郎,東京都千代田区1-1\n');
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    el<HTMLButtonElement>('[data-testid="import-csv-button"]')!.click();
+    await waitFor(() => expect(window.confirm).toHaveBeenCalled());
+
+    el<HTMLButtonElement>('[data-testid="back-button"]')!.click();
+    expect(rows()).toHaveLength(0);
+  });
+
+  it('確認で許可すると、読み取った名前・住所が追加される', async () => {
+    await openSettings();
+    attachCsvFile('名前,住所\n山田太郎,東京都千代田区1-1\n');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    el<HTMLButtonElement>('[data-testid="import-csv-button"]')!.click();
+    await waitFor(() => expect(el('.message')?.textContent).toContain('取り込みました'));
+
+    el<HTMLButtonElement>('[data-testid="back-button"]')!.click();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]?.textContent).toContain('山田太郎');
+  });
+
+  it('名前の列が無いCSVでは、個人情報を含まないエラーを表示する', async () => {
+    await openSettings();
+    attachCsvFile('氏名以外,住所\na,b\n');
+
+    el<HTMLButtonElement>('[data-testid="import-csv-button"]')!.click();
+    await waitFor(() => expect(el('.message')?.textContent).toContain('名前の列が見つかりませんでした。'));
+
+    expect(el('.message')?.textContent).not.toContain('a,b');
   });
 });
 

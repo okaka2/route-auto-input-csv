@@ -8,7 +8,7 @@ import { createPatient, updatePatientFields } from '../src/patient';
 // 前のテストのデータが次のテストへ漏れる。
 beforeEach(async () => {
   await closeDbForTest();
-  await deleteDB('route-auto-input');
+  await deleteDB('route-auto-input-csv');
 });
 
 describe('患者の保存と取得', () => {

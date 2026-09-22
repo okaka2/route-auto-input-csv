@@ -1,14 +1,27 @@
-# 訪問ルート作成
+# 訪問ルート作成CSV版
 
 複数の訪問先を選び、訪問順を決めて、地図アプリ(Googleマップ)でルートを開くWebアプリ(PWA)です。
 iPad・iPhone・PCのブラウザで使えます。ホーム画面に追加すると、アプリのように起動できます。
 
+[訪問ルート作成](https://github.com/okaka2/route-auto-input)(基本版)を元にした派生版で、
+外部ソフトが出力するCSVファイルから、名前・住所を取り込む機能が追加されています。
+
 ## 使い方(3ステップ)
 
 1. **訪問先を選ぶ** — 名前と住所を登録しておき、行をタップして選びます。名前・住所で検索できます。
+   設定画面から、CSVファイルを取り込んで一括登録することもできます。
 2. **訪問順を決める** — ▲▼で順番を入れ替えます。
 3. **地図を開く** — 「この順番で地図を開く」から、Googleマップでルートを開きます。
    地点が多いときは、ルートが自動で分かれます。次に開くルートが青く目立ちます。
+
+## CSVからの取り込み
+
+設定画面の「CSVからの取り込み」から、CSVファイルを選んで取り込みます。
+
+- 読み取るのは **名前・住所(建物名を含む)** だけです。他の列(電話番号・生年月日など)は読み取りません。
+- 既存のデータは消さず、常に追加します。
+- 名前・住所の両方が既存データと完全に一致する行は、自動でスキップします。
+- 文字コードはUTF-8・Shift-JIS(CP932)のどちらにも対応します。
 
 ## データの扱い
 
@@ -33,7 +46,7 @@ npm run icons      # assets/icon.svg から PWA アイコンを生成
 
 ## 公開の手順(初回のみ)
 
-1. github.com で `route-auto-input` という名前のリポジトリを作る。
+1. github.com で `route-auto-input-csv` という名前のリポジトリを作る。
    **無料アカウントでGitHub Pagesを使うにはPublic(公開)にする必要がある。**
    公開されるのはアプリのコードだけで、訪問先のデータは含まれない。
 2. GitHubのリポジトリ → Settings → Pages → Build and deployment → Source を
@@ -42,7 +55,7 @@ npm run icons      # assets/icon.svg から PWA アイコンを生成
 
    ```bash
    git branch -M main
-   git remote add origin https://github.com/<GitHubユーザー名>/route-auto-input.git
+   git remote add origin https://github.com/<GitHubユーザー名>/route-auto-input-csv.git
    git push -u origin main
    ```
 
@@ -50,7 +63,7 @@ npm run icons      # assets/icon.svg から PWA アイコンを生成
    **手順2を先に済ませていても、初回の実行が失敗(赤いX)になることがある。**
    その場合はActionsタブから失敗したワークフローを開き、「Re-run jobs」で
    再実行すれば通常は成功する。
-5. `https://<GitHubユーザー名>.github.io/route-auto-input/` が公開URL。
+5. `https://<GitHubユーザー名>.github.io/route-auto-input-csv/` が公開URL。
 
 以降は `main` に push するたびに自動で公開される。
 
@@ -76,7 +89,7 @@ Googleマップの公式仕様では、経路URLの経由地の上限は
 
 ## 実機テスト(iPad・iPhoneで一度行う)
 
-- [ ] Safariで公開URLを開き、「ホーム画面に追加」ができる(名前は「訪問ルート作成」)
+- [ ] Safariで公開URLを開き、「ホーム画面に追加」ができる(名前は「訪問ルート作成CSV版」)
 - [ ] ホーム画面のアイコンから起動すると、アドレスバーのない(standalone)表示になる
 - [ ] 下部のタブと選択バーが、ホームインジケータと重ならない
 - [ ] 横向きにしても崩れない

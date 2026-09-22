@@ -6,14 +6,15 @@ import { renderSettings, type SettingsHandlers } from '../src/views/settingsView
 const handlers = (): SettingsHandlers => ({
   onExport: vi.fn(),
   onImport: vi.fn(),
+  onImportCsv: vi.fn(),
   onBack: vi.fn(),
 });
 
 const q = <T extends HTMLElement = HTMLElement>(element: HTMLElement, testid: string): T =>
   element.querySelector<T>(`[data-testid="${testid}"]`)!;
 
-function attachFile(element: HTMLElement, file: File): void {
-  Object.defineProperty(q(element, 'import-input'), 'files', { value: [file], configurable: true });
+function attachFile(element: HTMLElement, file: File, testid = 'import-input'): void {
+  Object.defineProperty(q(element, testid), 'files', { value: [file], configurable: true });
 }
 
 describe('renderSettings: 全体', () => {
@@ -95,5 +96,36 @@ describe('renderSettings: 読み込み', () => {
   it('ファイル選択欄に名前(aria-label)を付ける', () => {
     const element = renderSettings(createInitialState([]), handlers());
     expect(q(element, 'import-input').getAttribute('aria-label')).toBe('バックアップファイルを選ぶ');
+  });
+});
+
+describe('renderSettings: CSVからの取り込み', () => {
+  it('見出しと説明を表示する', () => {
+    const element = renderSettings(createInitialState([]), handlers());
+    expect(element.textContent).toContain('CSVからの取り込み');
+    expect(element.textContent).toContain('名前・住所（建物名を含む）だけを読み取ります。');
+  });
+
+  it('ファイル選択欄はCSVを受け付け、名前(aria-label)を持つ', () => {
+    const element = renderSettings(createInitialState([]), handlers());
+    const input = q<HTMLInputElement>(element, 'import-csv-input');
+    expect(input.accept).toContain('.csv');
+    expect(input.getAttribute('aria-label')).toBe('CSVファイルを選ぶ');
+  });
+
+  it('ファイル未選択で取り込みボタンを押しても、何も起きない', () => {
+    const spies = handlers();
+    const element = renderSettings(createInitialState([]), spies);
+    q<HTMLButtonElement>(element, 'import-csv-button').click();
+    expect(spies.onImportCsv).not.toHaveBeenCalled();
+  });
+
+  it('ファイルを選んで取り込みボタンを押すと、そのファイルで onImportCsv が呼ばれる', () => {
+    const spies = handlers();
+    const element = renderSettings(createInitialState([]), spies);
+    const file = new File(['a'], 'list.csv', { type: 'text/csv' });
+    attachFile(element, file, 'import-csv-input');
+    q<HTMLButtonElement>(element, 'import-csv-button').click();
+    expect(spies.onImportCsv).toHaveBeenCalledWith(file);
   });
 });

@@ -4,6 +4,7 @@ import { renderMessage, renderScreenHeader } from './common';
 export type SettingsHandlers = {
   onExport(): void;
   onImport(file: File, mode: 'replace' | 'merge'): void;
+  onImportCsv(file: File): void;
   onBack(): void;
 };
 
@@ -20,7 +21,7 @@ export function renderSettings(state: AppState, handlers: SettingsHandlers): HTM
   const count = document.createElement('p');
   count.className = 'hint';
   count.textContent = `登録されている訪問先: ${state.patients.length}件`;
-  container.append(count, renderExport(handlers), renderImport(handlers));
+  container.append(count, renderExport(handlers), renderImport(handlers), renderCsvImport(handlers));
   return container;
 }
 
@@ -82,6 +83,45 @@ function renderImport(handlers: SettingsHandlers): HTMLElement {
   });
 
   card.append(heading, fileInput, modes, button);
+  return card;
+}
+
+/**
+ * 外部のCSVファイルから、名前・住所(建物名を含む)だけを読み取って追加する。
+ * 既存のJSONバックアップの読み込みとは別の、独立した取り込み口。既存データは消さない
+ * (常に追加のみ)。名前・住所が完全一致する行は、取り込み時に自動で除く。
+ */
+function renderCsvImport(handlers: SettingsHandlers): HTMLElement {
+  const card = document.createElement('section');
+  card.className = 'card';
+
+  const heading = document.createElement('h2');
+  heading.textContent = 'CSVからの取り込み';
+  const note = document.createElement('p');
+  note.textContent =
+    '名前・住所（建物名を含む）だけを読み取ります。既存のデータは消さず、追加します。' +
+    '名前・住所の両方が同じ行はスキップします。';
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'text/csv,.csv';
+  fileInput.dataset.testid = 'import-csv-input';
+  fileInput.setAttribute('aria-label', 'CSVファイルを選ぶ');
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'block';
+  button.dataset.testid = 'import-csv-button';
+  button.textContent = 'CSVから取り込む';
+  button.addEventListener('click', () => {
+    const file = fileInput.files?.[0];
+    if (!file) {
+      return;
+    }
+    handlers.onImportCsv(file);
+  });
+
+  card.append(heading, note, fileInput, button);
   return card;
 }
 
