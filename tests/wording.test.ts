@@ -22,7 +22,8 @@ import { renderSettings } from '../src/views/settingsView';
 import { renderTabBar } from '../src/views/tabBar';
 
 // 画面に出してはいけない、業種特有の表現と、以前のアプリ名。
-const FORBIDDEN = ['患者', '薬局', '在宅', '医療', '利用者', 'ルート自動入力'];
+// 「利用者」は、初期設定のラベル(defaultLabels.ts)で使うため、CSV版では解禁している。
+const FORBIDDEN = ['患者', '薬局', '在宅', '医療', 'ルート自動入力'];
 
 function expectClean(label: string, text: string): void {
   for (const word of FORBIDDEN) {
@@ -176,14 +177,8 @@ describe('ソースコード中の文字列(禁止語が出ない)', () => {
     return withoutComments.match(pattern) ?? [];
   }
 
-  // src/csvImport.ts は、CSV取り込み対象(外部の介護・訪問看護ソフトの出力)の見出し行と
-  // 照合するための文字列(「利用者名」など)を定数として持つ。これは画面には一切表示されず、
-  // アップロードされたファイルの見出しと一致するかどうかだけに使う、外部フォーマットへの
-  // 対応であり、こちら側で言い換えられるものではないため、この掃引の対象から除く。
-  const EXCLUDED_FROM_SWEEP = ['../src/csvImport.ts'];
-
-  it('画面に出る文字列に、禁止語を使っていない(CSVの見出し照合用の定数を除く)', () => {
-    const entries = Object.entries(sources).filter(([path]) => !EXCLUDED_FROM_SWEEP.includes(path));
+  it('画面に出る文字列に、禁止語を使っていない', () => {
+    const entries = Object.entries(sources);
     expect(entries.length).toBeGreaterThan(10);
     for (const [path, source] of entries) {
       for (const literal of stringLiterals(source)) {

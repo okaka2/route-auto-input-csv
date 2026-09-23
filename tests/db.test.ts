@@ -12,6 +12,7 @@ import {
   saveLabels,
   savePatient,
 } from '../src/db';
+import { DEFAULT_LABELS } from '../src/defaultLabels';
 import { createPatient, updatePatientFields } from '../src/patient';
 import type { Patient } from '../src/types';
 
@@ -100,11 +101,17 @@ describe('インポート', () => {
 });
 
 describe('ラベルの保存', () => {
-  it('最初は空', async () => {
-    expect(await listLabels()).toEqual([]);
+  it('初回(まだ一度も保存していない)は、初期設定のラベルが入っている', async () => {
+    expect(await listLabels()).toEqual(DEFAULT_LABELS);
   });
 
-  it('保存した内容がそのまま読み出せる', async () => {
+  it('初回に読み出した初期設定のラベルは、DBにも保存され、以後も同じものが返る', async () => {
+    await listLabels();
+    await closeDbForTest();
+    expect(await listLabels()).toEqual(DEFAULT_LABELS);
+  });
+
+  it('保存した内容がそのまま読み出せる(初期設定を上書きする)', async () => {
     await saveLabels(['エリアA', 'エリアB']);
     expect(await listLabels()).toEqual(['エリアA', 'エリアB']);
   });
@@ -113,5 +120,10 @@ describe('ラベルの保存', () => {
     await saveLabels(['エリアA', 'エリアB']);
     await saveLabels(['月曜担当']);
     expect(await listLabels()).toEqual(['月曜担当']);
+  });
+
+  it('全部削除して空配列を保存した場合は、初期設定に戻らない', async () => {
+    await saveLabels([]);
+    expect(await listLabels()).toEqual([]);
   });
 });

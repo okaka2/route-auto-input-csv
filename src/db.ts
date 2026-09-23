@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { DEFAULT_LABELS } from './defaultLabels';
 import type { Patient } from './types';
 
 const DB_NAME = 'route-auto-input-csv';
@@ -103,11 +104,16 @@ export async function mergePatients(patients: readonly Patient[]): Promise<void>
   await tx.done;
 }
 
-/** 今あるラベルの名前の一覧(追加した順)。 */
+/**
+ * 今あるラベルの名前の一覧(追加した順)。
+ * まだ一度も保存したことがなければ(undefined)、初期設定のラベルを返す(読むだけで、
+ * この時点ではDBには書き込まない)。全部削除して空配列を保存した場合はundefinedには
+ * ならないため、初期設定には戻らない。ラベルの追加・削除(saveLabels)で初めてDBに書かれる。
+ */
 export async function listLabels(): Promise<string[]> {
   const db = await getDb();
   const labels = await db.get(META_STORE, LABELS_KEY);
-  return labels ?? [];
+  return labels ?? [...DEFAULT_LABELS];
 }
 
 /** ラベルの一覧を丸ごと置き換える。 */
