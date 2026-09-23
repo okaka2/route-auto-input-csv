@@ -14,13 +14,15 @@ import {
   selectedPatients,
   setSearchQuery,
   setSortOrder,
+  toggleLabelFilter,
   toggleSelection,
   visiblePatients,
+  withLabels,
   withMessage,
   withPatients,
   withScreen,
 } from '../src/state';
-import type { Patient } from '../src/types';
+import { NO_LABEL_FILTER, type Patient } from '../src/types';
 
 const makePatients = (count: number): Patient[] =>
   Array.from({ length: count }, (_, i) => createPatient(`患者${i + 1}`, `東京都${i + 1}-1`));
@@ -163,6 +165,89 @@ describe('visiblePatients', () => {
     state = setSortOrder(state, 'name');
     state = setSearchQuery(state, '東京');
     expect(visiblePatients(state).map((p) => p.name)).toEqual(['うえだ']);
+  });
+
+  it('ラベルの絞り込みをしていなければ、ラベルの有無に関係なく全件返す', () => {
+    const patients = [
+      createPatient('あり', '東京都', new Date(), ['エリアA']),
+      createPatient('なし', '大阪府'),
+    ];
+    const state = createInitialState(patients);
+    expect(visiblePatients(state)).toHaveLength(2);
+  });
+
+  it('ラベルで絞り込むと、そのラベルが付いた訪問先だけになる', () => {
+    const patients = [
+      createPatient('あ', '東京都', new Date(), ['エリアA']),
+      createPatient('い', '大阪府', new Date(), ['エリアB']),
+    ];
+    let state = createInitialState(patients);
+    state = toggleLabelFilter(state, 'エリアA');
+    expect(visiblePatients(state).map((p) => p.name)).toEqual(['あ']);
+  });
+
+  it('複数のラベルを選ぶと、どれか1つでも該当すれば表示する', () => {
+    const patients = [
+      createPatient('あ', '東京都', new Date(), ['エリアA']),
+      createPatient('い', '大阪府', new Date(), ['エリアB']),
+      createPatient('う', '京都府', new Date(), ['エリアC']),
+    ];
+    let state = createInitialState(patients);
+    state = toggleLabelFilter(state, 'エリアA');
+    state = toggleLabelFilter(state, 'エリアB');
+    expect(visiblePatients(state).map((p) => p.name)).toEqual(['あ', 'い']);
+  });
+
+  it('「ラベルなし」を選ぶと、ラベルが1つも無い訪問先だけになる', () => {
+    const patients = [createPatient('あり', '東京都', new Date(), ['エリアA']), createPatient('なし', '大阪府')];
+    let state = createInitialState(patients);
+    state = toggleLabelFilter(state, NO_LABEL_FILTER);
+    expect(visiblePatients(state).map((p) => p.name)).toEqual(['なし']);
+  });
+
+  it('絞り込みと検索は両方効く', () => {
+    const patients = [
+      createPatient('あ', '東京都', new Date(), ['エリアA']),
+      createPatient('あ2', '大阪府', new Date(), ['エリアA']),
+    ];
+    let state = createInitialState(patients);
+    state = toggleLabelFilter(state, 'エリアA');
+    state = setSearchQuery(state, '大阪');
+    expect(visiblePatients(state).map((p) => p.name)).toEqual(['あ2']);
+  });
+});
+
+describe('ラベル', () => {
+  it('withLabels: ラベルの一覧を差し替える', () => {
+    const state = withLabels(createInitialState([]), ['エリアA', 'エリアB']);
+    expect(state.labels).toEqual(['エリアA', 'エリアB']);
+  });
+
+  it('withLabels: 消えたラベルは絞り込みからも外れる', () => {
+    let state = createInitialState([]);
+    state = withLabels(state, ['エリアA', 'エリアB']);
+    state = toggleLabelFilter(state, 'エリアA');
+    state = withLabels(state, ['エリアB']);
+    expect(state.labelFilter).toEqual([]);
+  });
+
+  it('withLabels: 「ラベルなし」の絞り込みは、ラベルが変わっても残る', () => {
+    let state = createInitialState([]);
+    state = withLabels(state, ['エリアA']);
+    state = toggleLabelFilter(state, NO_LABEL_FILTER);
+    state = withLabels(state, ['エリアA', 'エリアB']);
+    expect(state.labelFilter).toEqual([NO_LABEL_FILTER]);
+  });
+
+  it('toggleLabelFilter: 選ぶと絞り込みに加わる', () => {
+    const state = toggleLabelFilter(createInitialState([]), 'エリアA');
+    expect(state.labelFilter).toEqual(['エリアA']);
+  });
+
+  it('toggleLabelFilter: もう一度選ぶと外れる', () => {
+    let state = toggleLabelFilter(createInitialState([]), 'エリアA');
+    state = toggleLabelFilter(state, 'エリアA');
+    expect(state.labelFilter).toEqual([]);
   });
 });
 

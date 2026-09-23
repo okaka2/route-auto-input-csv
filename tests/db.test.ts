@@ -5,12 +5,15 @@ import {
   closeDbForTest,
   deletePatient,
   deletePatients,
+  listLabels,
   listPatients,
   mergePatients,
   replaceAllPatients,
+  saveLabels,
   savePatient,
 } from '../src/db';
 import { createPatient, updatePatientFields } from '../src/patient';
+import type { Patient } from '../src/types';
 
 // 接続を閉じてから消す。開いたままだと deleteDB がブロックされ、
 // 前のテストのデータが次のテストへ漏れる。
@@ -50,6 +53,13 @@ describe('患者の保存と取得', () => {
     expect(await listPatients()).toEqual([]);
   });
 
+  it('ラベル機能より前に保存された(labelsを持たない)データも、空配列として読み出せる', async () => {
+    const legacyPatient: Omit<Patient, 'labels'> & { labels?: string[] } = { ...createPatient('山田', '東京都') };
+    delete legacyPatient.labels;
+    await savePatient(legacyPatient as Patient);
+    expect((await listPatients())[0]?.labels).toEqual([]);
+  });
+
   it('複数件まとめて削除できる', async () => {
     const a = createPatient('山田', '東京都');
     const b = createPatient('鈴木', '大阪府');
@@ -86,5 +96,22 @@ describe('インポート', () => {
     const stored = await listPatients();
     expect(stored).toHaveLength(1);
     expect(stored[0]?.name).toBe('更新後');
+  });
+});
+
+describe('ラベルの保存', () => {
+  it('最初は空', async () => {
+    expect(await listLabels()).toEqual([]);
+  });
+
+  it('保存した内容がそのまま読み出せる', async () => {
+    await saveLabels(['エリアA', 'エリアB']);
+    expect(await listLabels()).toEqual(['エリアA', 'エリアB']);
+  });
+
+  it('保存し直すと、前の内容は残らず置き換わる', async () => {
+    await saveLabels(['エリアA', 'エリアB']);
+    await saveLabels(['月曜担当']);
+    expect(await listLabels()).toEqual(['月曜担当']);
   });
 });

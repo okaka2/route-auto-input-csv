@@ -132,6 +132,44 @@ describe('planCsvImport: 重複の扱い(完全一致はスキップ)', () => {
   });
 });
 
+describe('planCsvImport: 重複行の、ラベル未登録の既存データ', () => {
+  it('重複した既存データにラベルが1つも無ければ、そのidを教える', () => {
+    const existing = [createPatient('山田', '東京都千代田区1-1')];
+    const csv = '利用者名,住所\n山田,東京都千代田区1-1';
+    const plan = planCsvImport(csv, existing);
+    expect(plan.duplicateIdsWithoutLabel).toEqual([existing[0]!.id]);
+  });
+
+  it('重複した既存データに既にラベルが付いていれば、教えない', () => {
+    const existing = [createPatient('山田', '東京都千代田区1-1', new Date(), ['エリアA'])];
+    const csv = '利用者名,住所\n山田,東京都千代田区1-1';
+    const plan = planCsvImport(csv, existing);
+    expect(plan.duplicateIdsWithoutLabel).toEqual([]);
+  });
+
+  it('重複していない(新規取り込みの)行は含めない', () => {
+    const csv = '利用者名,住所\n鈴木,大阪府大阪市2-2';
+    const plan = planCsvImport(csv, []);
+    expect(plan.duplicateIdsWithoutLabel).toEqual([]);
+  });
+
+  it('CSV内だけの重複(既存データとは無関係)は含めない', () => {
+    const csv = '利用者名,住所\n山田,東京都千代田区1-1\n山田,東京都千代田区1-1';
+    const plan = planCsvImport(csv, []);
+    expect(plan.duplicateIdsWithoutLabel).toEqual([]);
+  });
+
+  it('複数件あれば、すべて教える', () => {
+    const existing = [
+      createPatient('山田', '東京都千代田区1-1'),
+      createPatient('鈴木', '大阪府大阪市2-2'),
+    ];
+    const csv = '利用者名,住所\n山田,東京都千代田区1-1\n鈴木,大阪府大阪市2-2';
+    const plan = planCsvImport(csv, existing);
+    expect(plan.duplicateIdsWithoutLabel).toEqual([existing[0]!.id, existing[1]!.id]);
+  });
+});
+
 describe('planCsvImport: 全体の件数', () => {
   it('取り込む件数・空欄でスキップ・重複でスキップの合計が、データの行数と一致する', () => {
     const existing = [createPatient('山田', '東京都千代田区1-1')];

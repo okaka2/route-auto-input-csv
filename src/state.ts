@@ -1,5 +1,5 @@
 import { MAX_SELECTION } from './config';
-import type { AppState, Message, Patient, Screen, SortOrder } from './types';
+import { NO_LABEL_FILTER, type AppState, type Message, type Patient, type Screen, type SortOrder } from './types';
 
 /** 日本語のあいうえお順で比較する。 */
 const jaCollator = new Intl.Collator('ja');
@@ -11,9 +11,29 @@ export function createInitialState(patients: Patient[]): AppState {
     selectedIds: [],
     searchQuery: '',
     sortOrder: 'registered',
+    labels: [],
+    labelFilter: [],
     message: null,
     dialog: null,
   };
+}
+
+/** DBから読み直したラベルの一覧を反映する。無くなったラベルは絞り込みからも外す。 */
+export function withLabels(state: AppState, labels: string[]): AppState {
+  const existing = new Set(labels);
+  return {
+    ...state,
+    labels,
+    labelFilter: state.labelFilter.filter((label) => label === NO_LABEL_FILTER || existing.has(label)),
+  };
+}
+
+/** ラベルでの絞り込みに、指定のラベル(NO_LABEL_FILTERも可)を足す/外す。 */
+export function toggleLabelFilter(state: AppState, label: string): AppState {
+  const labelFilter = state.labelFilter.includes(label)
+    ? state.labelFilter.filter((item) => item !== label)
+    : [...state.labelFilter, label];
+  return { ...state, labelFilter };
 }
 
 /** DBを読み直したときに使う。存在しなくなった訪問先の選択と、その訪問先のダイアログは外す。 */
@@ -103,17 +123,26 @@ export function moveSelected(state: AppState, id: string, direction: -1 | 1): Ap
 
 export function visiblePatients(state: AppState): Patient[] {
   const query = state.searchQuery.trim();
-  const matched =
+  const searched =
     query.length === 0
       ? state.patients
       : state.patients.filter(
           (patient) => patient.name.includes(query) || patient.address.includes(query),
         );
+  const matched = state.labelFilter.length === 0 ? searched : searched.filter((patient) => matchesLabelFilter(patient, state.labelFilter));
   if (state.sortOrder === 'registered') {
     return matched;
   }
   const key = state.sortOrder === 'name' ? 'name' : 'address';
   return [...matched].sort((a, b) => jaCollator.compare(a[key], b[key]));
+}
+
+/** 選んだラベル(NO_LABEL_FILTERは「ラベルなし」)のどれか1つにでも当てはまるか。 */
+function matchesLabelFilter(patient: Patient, labelFilter: readonly string[]): boolean {
+  if (patient.labels.length === 0) {
+    return labelFilter.includes(NO_LABEL_FILTER);
+  }
+  return patient.labels.some((label) => labelFilter.includes(label));
 }
 
 /** 訪問順に並んだ、選択中の患者。 */

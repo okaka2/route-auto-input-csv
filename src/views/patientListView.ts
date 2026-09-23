@@ -1,7 +1,8 @@
 import { APP_NAME } from '../appInfo';
 import { MAX_SELECTION } from '../config';
+import { labelColorIndex } from '../labelColor';
 import { visiblePatients } from '../state';
-import type { AppState, Patient, SortOrder } from '../types';
+import { NO_LABEL_FILTER, type AppState, type Patient, type SortOrder } from '../types';
 import { renderMessage } from './common';
 
 export type PatientListHandlers = {
@@ -12,6 +13,8 @@ export type PatientListHandlers = {
   onSortChange(order: SortOrder): void;
   /** 全選択/全解除ボタン。今どちらの動作をするかは、呼び出し側が状態を見て決める。 */
   onToggleSelectAll(): void;
+  /** ラベル(NO_LABEL_FILTERは「ラベルなし」)での絞り込みを付け外しする。 */
+  onToggleLabelFilter(label: string): void;
   onNew(): void;
   /** 行の「⋯」。編集・複製・削除は、開いたメニューの中にある。 */
   onOpenMenu(id: string): void;
@@ -30,20 +33,16 @@ export function renderPatientList(state: AppState, handlers: PatientListHandlers
   // 見出しと検索欄は、一覧をスクロールしても上部に残す(sticky)。
   const head = document.createElement('div');
   head.className = 'list-head';
-  head.append(renderTitleRow(handlers), renderSearch(state, handlers), renderListControls(state, handlers));
+  const controls = renderListControls(state, handlers);
+  head.append(renderTitleRow(handlers), renderSearch(state, handlers), controls.row);
+  if (controls.labelPanel) {
+    head.append(controls.labelPanel);
+  }
   container.append(head);
 
   if (state.message) {
     container.append(renderMessage(state.message));
   }
-
-  const newButton = document.createElement('button');
-  newButton.type = 'button';
-  newButton.className = 'primary block';
-  newButton.dataset.testid = 'new-button';
-  newButton.textContent = '＋ 訪問先を登録';
-  newButton.addEventListener('click', () => handlers.onNew());
-  container.append(newButton);
 
   const patients = visiblePatients(state);
   if (patients.length === 0) {
@@ -150,8 +149,17 @@ const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
   { value: 'address', label: '住所順(あいうえお順)' },
 ];
 
-/** 並び替えのプルダウンと、全選択/全解除ボタン。 */
-function renderListControls(state: AppState, handlers: PatientListHandlers): HTMLElement {
+type ListControls = {
+  row: HTMLElement;
+  /** ラベルの絞り込みチップの列。ボタン行の外(下、全幅)に置くため、別枠で返す。 */
+  labelPanel: HTMLElement | null;
+};
+
+/**
+ * 並び替え・全選択・ラベルの絞り込み・登録を、同じ高さのボタンとして1つの列にまとめる。
+ * 幅が足りなければ折り返し、ボタンが見切れることはない(横スクロールにはしない)。
+ */
+function renderListControls(state: AppState, handlers: PatientListHandlers): ListControls {
   const row = document.createElement('div');
   row.className = 'list-controls';
 
@@ -170,6 +178,7 @@ function renderListControls(state: AppState, handlers: PatientListHandlers): HTM
   }
   sort.value = state.sortOrder;
   sort.addEventListener('change', () => handlers.onSortChange(sort.value as SortOrder));
+  row.append(sort);
 
   const visible = visiblePatients(state);
   const allSelected = visible.length > 0 && visible.every((patient) => state.selectedIds.includes(patient.id));
@@ -180,9 +189,62 @@ function renderListControls(state: AppState, handlers: PatientListHandlers): HTM
   selectAll.dataset.testid = 'select-all-button';
   selectAll.textContent = allSelected ? '全解除' : '全選択';
   selectAll.addEventListener('click', () => handlers.onToggleSelectAll());
+  row.append(selectAll);
 
-  row.append(sort, selectAll);
-  return row;
+  let labelPanel: HTMLElement | null = null;
+  if (state.labels.length > 0) {
+    const labelFilter = renderLabelFilterButton(state, handlers);
+    row.append(labelFilter.button);
+    labelPanel = labelFilter.panel;
+  }
+
+  const newButton = document.createElement('button');
+  newButton.type = 'button';
+  newButton.className = 'primary';
+  newButton.dataset.testid = 'new-button';
+  newButton.textContent = '＋ 訪問先を登録';
+  newButton.addEventListener('click', () => handlers.onNew());
+  row.append(newButton);
+
+  return { row, labelPanel };
+}
+
+/**
+ * 「ラベル」ボタンと、押すと開くチップの列(ラベル名 + 「ラベルなし」)。
+ * チップの開閉は見た目だけの状態で、状態(AppState)には持たない。
+ * パネルはボタン行の外(下、全幅)に置きたいため、呼び出し側で別々に配置できるよう分けて返す。
+ */
+function renderLabelFilterButton(
+  state: AppState,
+  handlers: PatientListHandlers,
+): { button: HTMLButtonElement; panel: HTMLElement } {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `label-filter-button${state.labelFilter.length > 0 ? ' active' : ''}`;
+  button.dataset.testid = 'label-filter-button';
+  button.textContent = 'ラベル';
+  button.setAttribute('aria-expanded', 'false');
+
+  const panel = document.createElement('div');
+  panel.className = 'label-filter-panel';
+  panel.hidden = true;
+  for (const label of [...state.labels, NO_LABEL_FILTER]) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = `label-chip${state.labelFilter.includes(label) ? ' selected' : ''}`;
+    chip.dataset.testid = 'label-filter-chip';
+    chip.textContent = label === NO_LABEL_FILTER ? 'ラベルなし' : label;
+    chip.setAttribute('aria-pressed', String(state.labelFilter.includes(label)));
+    chip.addEventListener('click', () => handlers.onToggleLabelFilter(label));
+    panel.append(chip);
+  }
+
+  button.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    button.setAttribute('aria-expanded', String(!panel.hidden));
+  });
+
+  return { button, panel };
 }
 
 function renderRow(patient: Patient, state: AppState, handlers: PatientListHandlers): HTMLElement {
@@ -216,6 +278,9 @@ function renderRow(patient: Patient, state: AppState, handlers: PatientListHandl
 
   const text = document.createElement('span');
   text.className = 'place-text';
+  if (patient.labels.length > 0) {
+    text.append(renderLabelBadges(patient.labels));
+  }
   const name = document.createElement('span');
   name.className = 'place-name';
   name.textContent = patient.name;
@@ -239,4 +304,42 @@ function renderRow(patient: Patient, state: AppState, handlers: PatientListHandl
 
   row.append(main, more);
   return row;
+}
+
+/** ラベルが多いと見づらくなるため、2件までを表示し、残りは「+N」にまとめて押すと開く。 */
+const MAX_VISIBLE_BADGES = 2;
+
+function renderLabelBadges(labels: readonly string[]): HTMLElement {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'label-badges';
+
+  const visible = labels.slice(0, MAX_VISIBLE_BADGES);
+  const rest = labels.slice(MAX_VISIBLE_BADGES);
+  for (const label of visible) {
+    wrapper.append(labelBadge(label));
+  }
+
+  if (rest.length > 0) {
+    const restBadges = rest.map((label) => labelBadge(label));
+
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'label-badge-more';
+    more.dataset.testid = 'label-badge-more';
+    more.textContent = `+${rest.length}`;
+    more.addEventListener('click', () => {
+      wrapper.append(...restBadges);
+      more.remove();
+    });
+    wrapper.append(more);
+  }
+
+  return wrapper;
+}
+
+function labelBadge(label: string): HTMLElement {
+  const badge = document.createElement('span');
+  badge.className = `label-badge label-color-${labelColorIndex(label)}`;
+  badge.textContent = label;
+  return badge;
 }

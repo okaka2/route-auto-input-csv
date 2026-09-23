@@ -6,20 +6,32 @@ type BackupFile = {
   version: number;
   exportedAt: string;
   patients: Patient[];
+  /** 定義済みラベルの一覧。ラベル機能より前のバックアップには無い。 */
+  labelDefinitions: string[];
+};
+
+export type ParsedBackup = {
+  patients: Patient[];
+  labelDefinitions: string[];
 };
 
 const REQUIRED_KEYS = ['id', 'name', 'address', 'createdAt', 'updatedAt'] as const;
 
-export function serializeBackup(patients: readonly Patient[], now: Date = new Date()): string {
+export function serializeBackup(
+  patients: readonly Patient[],
+  now: Date = new Date(),
+  labels: readonly string[] = [],
+): string {
   const data: BackupFile = {
     version: BACKUP_VERSION,
     exportedAt: now.toISOString(),
     patients: [...patients],
+    labelDefinitions: [...labels],
   };
   return JSON.stringify(data, null, 2);
 }
 
-export function parseBackup(text: string): Patient[] {
+export function parseBackup(text: string): ParsedBackup {
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -39,7 +51,17 @@ export function parseBackup(text: string): Patient[] {
     throw new Error('バックアップファイルの形式が正しくありません。');
   }
 
-  return record.patients.map((item, index) => toPatient(item, index));
+  const patients = record.patients.map((item, index) => toPatient(item, index));
+  const labelDefinitions = toLabelDefinitions(record.labelDefinitions);
+  return { patients, labelDefinitions };
+}
+
+/** ラベル機能より前のバックアップには無いため、形式が違えば空配列にする(壊れていても取り込みは続ける)。 */
+function toLabelDefinitions(value: unknown): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    return [];
+  }
+  return value;
 }
 
 function toPatient(item: unknown, index: number): Patient {
@@ -55,10 +77,16 @@ function toPatient(item: unknown, index: number): Patient {
     }
   }
 
+  const labels =
+    Array.isArray(record.labels) && record.labels.every((label) => typeof label === 'string')
+      ? (record.labels as string[])
+      : [];
+
   return {
     id: record.id as string,
     name: record.name as string,
     address: record.address as string,
+    labels,
     createdAt: record.createdAt as string,
     updatedAt: record.updatedAt as string,
   };

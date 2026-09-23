@@ -469,6 +469,119 @@ describe('CSVからの取り込み', () => {
 
     expect(el('.message')?.textContent).not.toContain('a,b');
   });
+
+  it('ラベルが1つも無ければ、ラベルの付け方の欄は出ない', async () => {
+    await openSettings();
+    expect(el('[data-testid="csv-label-mode"]')).toBeNull();
+  });
+
+  it('「全部に同じラベルを付ける」を選んで取り込むと、新規分にそのラベルが付く', async () => {
+    const { saveLabels } = await import('../src/db');
+    await saveLabels(['エリアA']);
+    await openSettings();
+    // 起動直後の読み込みは非同期のため、ラベルの欄が実際に現れるまで待つ
+    // (「訪問先0件」はラベル読み込み前から真なので、それだけでは待ったことにならない)。
+    await waitFor(() => expect(el('[data-testid="csv-label-mode"]')).not.toBeNull());
+    el<HTMLInputElement>('[data-testid="csv-label-mode-bulk"]')!.checked = true;
+    el<HTMLInputElement>('[data-testid="csv-label-mode-bulk"]')!.dispatchEvent(new Event('change'));
+    el<HTMLInputElement>('[data-testid="csv-label-checkbox"]')!.checked = true;
+    attachCsvFile('名前,住所\n山田太郎,東京都千代田区1-1\n');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    el<HTMLButtonElement>('[data-testid="import-csv-button"]')!.click();
+    await waitFor(() => expect(el('.message')?.textContent).toContain('取り込みました'));
+
+    el<HTMLButtonElement>('[data-testid="back-button"]')!.click();
+    expect(el('.label-badge')?.textContent).toBe('エリアA');
+  });
+
+  it('「個別」のままだと、取り込んだ分にラベルは付かない', async () => {
+    const { saveLabels } = await import('../src/db');
+    await saveLabels(['エリアA']);
+    await openSettings();
+    attachCsvFile('名前,住所\n山田太郎,東京都千代田区1-1\n');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    el<HTMLButtonElement>('[data-testid="import-csv-button"]')!.click();
+    await waitFor(() => expect(el('.message')?.textContent).toContain('取り込みました'));
+
+    el<HTMLButtonElement>('[data-testid="back-button"]')!.click();
+    expect(el('.label-badge')).toBeNull();
+  });
+
+  it('重複した既存データにラベルが無ければ、一括ラベルで後付けされる', async () => {
+    const { saveLabels, savePatient } = await import('../src/db');
+    const { createPatient } = await import('../src/patient');
+    await saveLabels(['エリアA']);
+    await savePatient(createPatient('山田太郎', '東京都千代田区1-1'));
+    await openSettings();
+    await waitFor(() => expect(el('[data-testid="csv-label-mode"]')).not.toBeNull());
+    el<HTMLInputElement>('[data-testid="csv-label-mode-bulk"]')!.checked = true;
+    el<HTMLInputElement>('[data-testid="csv-label-mode-bulk"]')!.dispatchEvent(new Event('change'));
+    el<HTMLInputElement>('[data-testid="csv-label-checkbox"]')!.checked = true;
+    attachCsvFile('名前,住所\n山田太郎,東京都千代田区1-1\n');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    el<HTMLButtonElement>('[data-testid="import-csv-button"]')!.click();
+    await waitFor(() => expect(el('.message')?.textContent).toContain('取り込みました'));
+
+    el<HTMLButtonElement>('[data-testid="back-button"]')!.click();
+    expect(rows()).toHaveLength(1);
+    expect(el('.label-badge')?.textContent).toBe('エリアA');
+  });
+});
+
+describe('ラベルの管理と絞り込み', () => {
+  async function openSettings(): Promise<void> {
+    await import('../src/main');
+    await waitFor(() => expect(rows()).toHaveLength(0));
+    el<HTMLButtonElement>('[data-testid="settings-button"]')!.click();
+    await waitFor(() => expect(el('[data-testid="label-name-input"]')).not.toBeNull());
+  }
+
+  it('ラベルを追加すると、一覧の並びに反映され、あとで見返せる', async () => {
+    await openSettings();
+    el<HTMLInputElement>('[data-testid="label-name-input"]')!.value = 'エリアA';
+    el<HTMLButtonElement>('[data-testid="label-add-button"]')!.click();
+    await waitFor(() => expect(el('.message')?.textContent).toContain('追加しました'));
+
+    expect(el('[data-testid="label-name-input"]')).not.toBeNull(); // 設定画面のまま
+    expect(document.body.textContent).toContain('エリアA');
+  });
+
+  it('ラベルを削除すると、付いていた訪問先からも外れる', async () => {
+    const { saveLabels, savePatient } = await import('../src/db');
+    const { createPatient } = await import('../src/patient');
+    await saveLabels(['エリアA']);
+    await savePatient(createPatient('山田太郎', '東京都千代田区1-1', new Date(), ['エリアA']));
+    await openSettings();
+    // 起動直後の読み込みは非同期のため、削除ボタン(ラベルが読み込まれてから出る)を待つ。
+    await waitFor(() => expect(el('[data-testid="label-delete-button"]')).not.toBeNull());
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    el<HTMLButtonElement>('[data-testid="label-delete-button"]')!.click();
+    await waitFor(() => expect(el('.message')?.textContent).toContain('削除しました'));
+
+    el<HTMLButtonElement>('[data-testid="back-button"]')!.click();
+    expect(el('.label-badge')).toBeNull();
+  });
+
+  it('一覧でラベルを絞り込むと、そのラベルの訪問先だけになる', async () => {
+    const { saveLabels, savePatient } = await import('../src/db');
+    const { createPatient } = await import('../src/patient');
+    await saveLabels(['エリアA', 'エリアB']);
+    await savePatient(createPatient('山田太郎', '東京都千代田区1-1', new Date(), ['エリアA']));
+    await savePatient(createPatient('鈴木花子', '大阪府大阪市2-2', new Date(), ['エリアB']));
+    await import('../src/main');
+    await waitFor(() => expect(rows()).toHaveLength(2));
+
+    el<HTMLButtonElement>('[data-testid="label-filter-button"]')!.click();
+    const chips = document.querySelectorAll<HTMLButtonElement>('[data-testid="label-filter-chip"]');
+    chips[0]!.click(); // エリアA
+
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(rows()[0]?.textContent).toContain('山田太郎');
+  });
 });
 
 describe('起動直後の読み込み', () => {

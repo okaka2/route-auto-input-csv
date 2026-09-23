@@ -314,31 +314,74 @@ a.disabled {
   gap: 0.5rem;
 }
 
+/* 並び替え・全選択・ラベル・登録を、同じ高さのボタンとして横に並べる。
+   幅が足りなければ折り返す(横スクロールにはしない。ボタンが見切れるのを防ぐため)。 */
 .list-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--gap);
+  gap: 0.5rem;
   padding: 0 calc(var(--gap) + env(safe-area-inset-right)) 0.5rem
     calc(var(--gap) + env(safe-area-inset-left));
 }
 
-.list-controls select {
-  min-height: var(--tap-primary);
-  padding: 0 0.5rem;
-  border: 1px solid var(--border);
+.list-controls select,
+.list-controls button {
+  min-height: var(--tap-min);
+  padding: 0 0.75rem;
+  font-size: 0.9375rem;
   border-radius: 0.5rem;
+}
+
+.list-controls select {
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
 }
 
-button.select-all {
-  min-height: var(--tap-primary);
-  padding: 0 0.75rem;
+button.select-all,
+button.label-filter-button {
   border: 1px solid var(--primary);
-  border-radius: 0.5rem;
   background: var(--surface);
   color: var(--primary);
+}
+
+/* 1件以上絞り込み中は、押したままの見た目にして分かるようにする。 */
+button.label-filter-button.active {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+/* 登録ボタンをこの並びの右端に寄せ、他と高さをそろえる(以前は単独で大きなボタンだった)。 */
+.list-controls button.primary {
+  min-height: var(--tap-min);
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.label-filter-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.625rem calc(var(--gap) + env(safe-area-inset-right)) 0.625rem
+    calc(var(--gap) + env(safe-area-inset-left));
+  background: var(--primary-soft);
+}
+
+.label-chip {
+  min-height: var(--tap-min);
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.label-chip.selected {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .tabbar ul {
@@ -760,6 +803,42 @@ input:focus-visible + .check {
   flex-direction: column;
   min-width: 0;
 }
+
+/* 行についているラベル。名前の上に置く。ラベルが無い訪問先は、この行ごと出ない。 */
+.label-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.125rem;
+}
+
+.label-badge,
+.label-badge-more {
+  font-size: 0.875rem;
+  line-height: 1.4;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.label-badge-more {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* ラベルの色は名前から自動で決まる(labelColorIndex)。並び順やラベルの増減があっても、
+   同じ名前ならいつも同じ色になる。 */
+.label-color-0 { background: #e6f1fb; color: #0c447c; }
+.label-color-1 { background: #eaf3de; color: #27500a; }
+.label-color-2 { background: #eeedfe; color: #3c3489; }
+.label-color-3 { background: #faece7; color: #712b13; }
+.label-color-4 { background: #fbeaf0; color: #72243e; }
+.label-color-5 { background: #faeeda; color: #633806; }
+.label-color-6 { background: #e1f5ee; color: #085041; }
+.label-color-7 { background: #fcebeb; color: #791f1f; }
 
 .place-name {
   font-weight: 600;

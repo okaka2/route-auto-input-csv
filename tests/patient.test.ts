@@ -21,6 +21,15 @@ describe('createPatient', () => {
     const b = createPatient('鈴木', '大阪府');
     expect(a.id).not.toBe(b.id);
   });
+
+  it('ラベルを省略すると空配列になる', () => {
+    expect(createPatient('山田', '東京都').labels).toEqual([]);
+  });
+
+  it('ラベルを渡すと、それが付く', () => {
+    const patient = createPatient('山田', '東京都', new Date(), ['エリアA', '月曜担当']);
+    expect(patient.labels).toEqual(['エリアA', '月曜担当']);
+  });
 });
 
 describe('updatePatientFields', () => {
@@ -32,5 +41,17 @@ describe('updatePatientFields', () => {
     expect(updated.name).toBe('山田 花子');
     expect(updated.address).toBe('大阪府');
     expect(updated.updatedAt).toBe('2026-09-02T00:00:00.000Z');
+  });
+
+  it('ラベルを省略すると、元のラベルをそのまま保つ', () => {
+    const original = createPatient('山田', '東京都', new Date(), ['エリアA']);
+    const updated = updatePatientFields(original, '山田 花子', '大阪府');
+    expect(updated.labels).toEqual(['エリアA']);
+  });
+
+  it('ラベルを渡すと、それに書き換わる', () => {
+    const original = createPatient('山田', '東京都', new Date(), ['エリアA']);
+    const updated = updatePatientFields(original, '山田', '東京都', new Date(), ['エリアB']);
+    expect(updated.labels).toEqual(['エリアB']);
   });
 });

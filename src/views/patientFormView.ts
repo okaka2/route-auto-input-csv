@@ -2,16 +2,17 @@ import { DEFAULT_MAP_PROVIDER } from '../mapProviders';
 import type { Message, Patient } from '../types';
 import { renderMessage } from './common';
 
-export type PatientFormDraft = { name: string; address: string };
+export type PatientFormDraft = { name: string; address: string; labels?: string[] };
 
 export type PatientFormHandlers = {
-  onSave(name: string, address: string): void;
+  onSave(name: string, address: string, labels: string[]): void;
   onCancel(): void;
 };
 
 /**
- * 訪問先の登録・編集フォーム。入力項目は名前と住所だけ。
+ * 訪問先の登録・編集フォーム。入力項目は名前と住所、それにラベル(定義済みのものがあれば)。
  * 住所は地図へ渡すために欠かせないので、保存できるのは、名前と住所がそろっているときだけ(検証は呼び出し側)。
+ * ラベルは省略でき、検証の対象ではない。
  *
  * `draft` は保存に失敗した直後の入力値(または複製元の値)。渡された場合は `patient` の値より
  * 優先して表示し、入力内容を画面に残す。
@@ -20,6 +21,7 @@ export function renderPatientForm(
   patient: Patient | null,
   draft: PatientFormDraft | null,
   message: Message | null,
+  allLabels: readonly string[],
   handlers: PatientFormHandlers,
 ): HTMLElement {
   const container = document.createElement('div');
@@ -31,6 +33,8 @@ export function renderPatientForm(
     draft?.address ?? patient?.address ?? '',
     '例) 東京都世田谷区桜丘1-2-3',
   );
+  const selectedLabels = new Set(draft?.labels ?? patient?.labels ?? []);
+  const labelCheckboxes: HTMLInputElement[] = [];
 
   // 見出しの行: 左に「キャンセル」、中央に見出し、右に「保存」。
   const header = document.createElement('header');
@@ -52,7 +56,10 @@ export function renderPatientForm(
   save.className = 'header-link save';
   save.dataset.testid = 'save-button';
   save.textContent = '保存';
-  save.addEventListener('click', () => handlers.onSave(nameInput.value, addressInput.value));
+  save.addEventListener('click', () => {
+    const labels = labelCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+    handlers.onSave(nameInput.value, addressInput.value, labels);
+  });
 
   header.append(cancel, title, save);
   container.append(header);
@@ -62,6 +69,11 @@ export function renderPatientForm(
   }
 
   container.append(field('名前', nameInput), field('住所', addressInput), renderMapCheck(addressInput));
+
+  if (allLabels.length > 0) {
+    container.append(renderLabelField(allLabels, selectedLabels, labelCheckboxes));
+  }
+
   return container;
 }
 
@@ -91,6 +103,35 @@ function field(labelText: string, input: HTMLInputElement): HTMLLabelElement {
 
   label.append(caption, input);
   return label;
+}
+
+/** ラベルのチェックボックス一覧。省略可(検証の対象ではない)なので「必須」は付けない。 */
+function renderLabelField(
+  allLabels: readonly string[],
+  selectedLabels: ReadonlySet<string>,
+  labelCheckboxes: HTMLInputElement[],
+): HTMLElement {
+  const fieldset = document.createElement('fieldset');
+  fieldset.className = 'field';
+
+  const legend = document.createElement('legend');
+  legend.className = 'field-label';
+  legend.textContent = 'ラベル';
+  fieldset.append(legend);
+
+  for (const label of allLabels) {
+    const checkboxLabel = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = label;
+    checkbox.checked = selectedLabels.has(label);
+    checkbox.dataset.testid = 'label-checkbox';
+    labelCheckboxes.push(checkbox);
+    checkboxLabel.append(checkbox, document.createTextNode(` ${label}`));
+    fieldset.append(checkboxLabel);
+  }
+
+  return fieldset;
 }
 
 /** 入力した住所を、地図サービスで確認するためのリンク。住所が空のあいだは、押せない。 */

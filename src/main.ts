@@ -2,7 +2,16 @@ import './styles.css';
 import { parseBackup, serializeBackup } from './backup';
 import { MAX_STOPS_PER_ROUTE } from './config';
 import { decodeCsvBytes, planCsvImport } from './csvImport';
-import { deletePatient, deletePatients, listPatients, mergePatients, replaceAllPatients, savePatient } from './db';
+import {
+  deletePatient,
+  deletePatients,
+  listLabels,
+  listPatients,
+  mergePatients,
+  replaceAllPatients,
+  saveLabels,
+  savePatient,
+} from './db';
 import { downloadTextFile, readTextFile } from './fileIo';
 import { DEFAULT_MAP_PROVIDER } from './mapProviders';
 import { openUrl } from './openRoute';
@@ -24,8 +33,10 @@ import {
   selectedPatients,
   setSearchQuery,
   setSortOrder,
+  toggleLabelFilter,
   toggleSelection,
   visiblePatients,
+  withLabels,
   withMessage,
   withPatients,
   withScreen,
@@ -125,8 +136,8 @@ function syncSession(): void {
  */
 async function reloadPatients(message?: Message): Promise<void> {
   try {
-    const patients = await listPatients();
-    const next = withPatients(state, patients);
+    const [patients, labels] = await Promise.all([listPatients(), listLabels()]);
+    const next = withLabels(withPatients(state, patients), labels);
     // withPatients は selectedIds を filter するだけで、要素を足したり並べ替えたりはしない。
     // よって長さが減っていれば、選択していた訪問先のどれかが読み直しで消えたということ。
     // そのルートの内容はもう変わっているので、開いた印は古くなる前に消す。
@@ -151,14 +162,14 @@ function currentEditingPatient(): Patient | null {
   return state.patients.find((patient) => patient.id === id) ?? null;
 }
 
-async function handleSave(name: string, address: string): Promise<void> {
+async function handleSave(name: string, address: string, labels: string[]): Promise<void> {
   if (savingPatient) {
     // 保存中の二重タップ。何もしない(2件目のUUIDが発行されるのを防ぐ)。
     return;
   }
   const validation = validatePatientInput(name, address);
   if (!validation.ok) {
-    formDraft = { name, address };
+    formDraft = { name, address, labels };
     setState(withMessage(state, { kind: 'error', text: validation.message }));
     return;
   }
@@ -166,7 +177,9 @@ async function handleSave(name: string, address: string): Promise<void> {
   try {
     const existing = currentEditingPatient();
     const patient =
-      existing === null ? createPatient(name, address) : updatePatientFields(existing, name, address);
+      existing === null
+        ? createPatient(name, address, new Date(), labels)
+        : updatePatientFields(existing, name, address, new Date(), labels);
     if (existing !== null && state.selectedIds.includes(existing.id)) {
       // 選択中(=ルートに入っている)訪問先の編集。住所が変わったかもしれないので、
       // そのルートについて開いた印は古くなる前に消す。
@@ -177,7 +190,7 @@ async function handleSave(name: string, address: string): Promise<void> {
     setState(withScreen(state, { name: 'list' }));
     await reloadPatients({ kind: 'info', text: '保存しました。' });
   } catch {
-    formDraft = { name, address };
+    formDraft = { name, address, labels };
     setState(withMessage(state, { kind: 'error', text: 'データを保存できませんでした。' }));
   } finally {
     savingPatient = false;
@@ -216,6 +229,39 @@ function handleToggleSelectAll(): void {
   const visible = visiblePatients(state);
   const allSelected = visible.length > 0 && visible.every((patient) => state.selectedIds.includes(patient.id));
   setState(allSelected ? clearSelection(state) : selectAllVisible(state));
+}
+
+function handleToggleLabelFilter(label: string): void {
+  setState(toggleLabelFilter(state, label));
+}
+
+async function handleAddLabel(name: string): Promise<void> {
+  if (state.labels.includes(name)) {
+    setState(withMessage(state, { kind: 'error', text: 'そのラベルはすでにあります。' }));
+    return;
+  }
+  try {
+    await saveLabels([...state.labels, name]);
+    await reloadPatients({ kind: 'info', text: `「${name}」を追加しました。` });
+  } catch {
+    setState(withMessage(state, { kind: 'error', text: 'ラベルを追加できませんでした。' }));
+  }
+}
+
+async function handleDeleteLabel(name: string): Promise<void> {
+  if (!window.confirm(`「${name}」を削除しますか? このラベルが付いている訪問先からも外れます。`)) {
+    return;
+  }
+  try {
+    await saveLabels(state.labels.filter((label) => label !== name));
+    const affected = state.patients.filter((patient) => patient.labels.includes(name));
+    for (const patient of affected) {
+      await savePatient({ ...patient, labels: patient.labels.filter((label) => label !== name) });
+    }
+    await reloadPatients({ kind: 'info', text: `「${name}」を削除しました。` });
+  } catch {
+    setState(withMessage(state, { kind: 'error', text: 'ラベルを削除できませんでした。' }));
+  }
 }
 
 /** 選択バーの「削除」。まだ削除しない(確認のダイアログへ進む)。 */
@@ -269,7 +315,7 @@ function handleDuplicate(id: string): void {
     return;
   }
   dialogReturnId = null;
-  formDraft = { name: source.name, address: source.address };
+  formDraft = { name: source.name, address: source.address, labels: source.labels };
   setState(withScreen(state, { name: 'form', patientId: null }));
 }
 
@@ -326,7 +372,7 @@ function handleOpenRoute(routeIndex: number): void {
 function handleExport(): void {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    downloadTextFile(`route-auto-input-csv-${date}.json`, serializeBackup(state.patients));
+    downloadTextFile(`route-auto-input-csv-${date}.json`, serializeBackup(state.patients, new Date(), state.labels));
     setState(withMessage(state, { kind: 'info', text: 'バックアップを書き出しました。' }));
   } catch {
     setState(withMessage(state, { kind: 'error', text: 'バックアップを書き出せませんでした。' }));
@@ -335,7 +381,7 @@ function handleExport(): void {
 
 async function handleImport(file: File, mode: 'replace' | 'merge'): Promise<void> {
   try {
-    const patients = parseBackup(await readTextFile(file));
+    const { patients, labelDefinitions } = parseBackup(await readTextFile(file));
     const question =
       mode === 'replace'
         ? `今のデータ${state.patients.length}件を消して、${patients.length}件を取り込みます。よろしいですか?`
@@ -345,8 +391,11 @@ async function handleImport(file: File, mode: 'replace' | 'merge'): Promise<void
     }
     if (mode === 'replace') {
       await replaceAllPatients(patients);
+      await saveLabels(labelDefinitions);
     } else {
       await mergePatients(patients);
+      // 追加(merge)モードでは、ラベルの定義は消さず、無いものだけ足す。
+      await saveLabels([...new Set([...state.labels, ...labelDefinitions])]);
     }
     await reloadPatients({ kind: 'info', text: `${patients.length}件を取り込みました。` });
   } catch (error) {
@@ -359,8 +408,13 @@ async function handleImport(file: File, mode: 'replace' | 'merge'): Promise<void
  * 外部のCSVファイルから、名前・住所(建物名を含む)だけを読み取って追加する。
  * 既存データは消さず、常に追加のみ。名前・住所が完全一致する行は自動でスキップする
  * (件数のみで、内容は確認ダイアログにもメッセージにも出さない)。
+ *
+ * labelsToApply(設定画面で「全部に同じラベルを付ける」を選んだ場合の選択結果。
+ * 「個別」なら空配列)が渡されれば、新しく取り込む分すべてに付けるだけでなく、
+ * 重複してスキップした行のうち、その既存の訪問先にまだラベルが無いものにも
+ * 後付けする(既にラベルがある既存データは変えない)。
  */
-async function handleImportCsv(file: File): Promise<void> {
+async function handleImportCsv(file: File, labelsToApply: string[]): Promise<void> {
   try {
     const text = decodeCsvBytes(await file.arrayBuffer());
     const plan = planCsvImport(text, state.patients);
@@ -370,9 +424,17 @@ async function handleImportCsv(file: File): Promise<void> {
     if (!window.confirm(question)) {
       return;
     }
-    const patients = plan.toImport.map((row) => createPatient(row.name, row.address));
-    await mergePatients(patients);
-    await reloadPatients({ kind: 'info', text: `${patients.length}件を取り込みました。` });
+    const newPatients = plan.toImport.map((row) => createPatient(row.name, row.address, new Date(), labelsToApply));
+    const patientsById = new Map(state.patients.map((patient) => [patient.id, patient]));
+    const backfilled =
+      labelsToApply.length === 0
+        ? []
+        : plan.duplicateIdsWithoutLabel
+            .map((id) => patientsById.get(id))
+            .filter((patient): patient is Patient => patient !== undefined)
+            .map((patient) => ({ ...patient, labels: labelsToApply }));
+    await mergePatients([...newPatients, ...backfilled]);
+    await reloadPatients({ kind: 'info', text: `${newPatients.length}件を取り込みました。` });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'データを取り込めませんでした。';
     setState(withMessage(state, { kind: 'error', text: message }));
@@ -399,6 +461,7 @@ function renderScreen(): HTMLElement {
         },
         onSortChange: handleSortChange,
         onToggleSelectAll: handleToggleSelectAll,
+        onToggleLabelFilter: handleToggleLabelFilter,
         onNew: () => {
           formDraft = null;
           setState(withScreen(state, { name: 'form', patientId: null }));
@@ -407,9 +470,9 @@ function renderScreen(): HTMLElement {
         onOpenSettings: () => setState(withScreen(state, { name: 'settings' })),
       });
     case 'form':
-      return renderPatientForm(currentEditingPatient(), formDraft, state.message, {
-        onSave: (name, address) => {
-          void handleSave(name, address);
+      return renderPatientForm(currentEditingPatient(), formDraft, state.message, state.labels, {
+        onSave: (name, address, labels) => {
+          void handleSave(name, address, labels);
         },
         onCancel: () => {
           formDraft = null;
@@ -442,8 +505,14 @@ function renderScreen(): HTMLElement {
         onImport: (file, mode) => {
           void handleImport(file, mode);
         },
-        onImportCsv: (file) => {
-          void handleImportCsv(file);
+        onImportCsv: (file, labelsToApply) => {
+          void handleImportCsv(file, labelsToApply);
+        },
+        onAddLabel: (name) => {
+          void handleAddLabel(name);
+        },
+        onDeleteLabel: (name) => {
+          void handleDeleteLabel(name);
         },
         onBack: () => setState(withScreen(state, { name: 'list' })),
       });

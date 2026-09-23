@@ -37,6 +37,7 @@ const listHandlers = {
   onToggleSelect: noop,
   onSortChange: noop,
   onToggleSelectAll: noop,
+  onToggleLabelFilter: noop,
   onNew: noop,
   onOpenMenu: noop,
   onOpenSettings: noop,
@@ -94,12 +95,13 @@ describe('画面の文言(禁止語が出ない)', () => {
   it('登録・編集フォーム: 新規・編集・下書き・メッセージ', () => {
     const handlers = { onSave: noop, onCancel: noop };
     const patient = createPatient('場所1', '東京都1-1');
-    expectClean('新規', renderPatientForm(null, null, null, handlers).outerHTML);
-    expectClean('編集', renderPatientForm(patient, null, null, handlers).outerHTML);
-    expectClean('下書き', renderPatientForm(null, { name: 'a', address: 'b' }, null, handlers).outerHTML);
+    const labels = ['場所ラベル'];
+    expectClean('新規', renderPatientForm(null, null, null, labels, handlers).outerHTML);
+    expectClean('編集', renderPatientForm(patient, null, null, labels, handlers).outerHTML);
+    expectClean('下書き', renderPatientForm(null, { name: 'a', address: 'b' }, null, labels, handlers).outerHTML);
     expectClean(
       'メッセージ',
-      renderPatientForm(null, null, { kind: 'error', text: 'x' }, handlers).outerHTML,
+      renderPatientForm(null, null, { kind: 'error', text: 'x' }, labels, handlers).outerHTML,
     );
   });
 
@@ -136,6 +138,8 @@ describe('画面の文言(禁止語が出ない)', () => {
         onExport: noop,
         onImport: noop,
         onImportCsv: noop,
+        onAddLabel: noop,
+        onDeleteLabel: noop,
         onBack: noop,
       }).outerHTML,
     );

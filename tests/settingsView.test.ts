@@ -7,6 +7,8 @@ const handlers = (): SettingsHandlers => ({
   onExport: vi.fn(),
   onImport: vi.fn(),
   onImportCsv: vi.fn(),
+  onAddLabel: vi.fn(),
+  onDeleteLabel: vi.fn(),
   onBack: vi.fn(),
 });
 
@@ -120,12 +122,107 @@ describe('renderSettings: CSVからの取り込み', () => {
     expect(spies.onImportCsv).not.toHaveBeenCalled();
   });
 
-  it('ファイルを選んで取り込みボタンを押すと、そのファイルで onImportCsv が呼ばれる', () => {
+  it('ファイルを選んで取り込みボタンを押すと、そのファイルで onImportCsv が呼ばれる(ラベル未定義なら空配列)', () => {
     const spies = handlers();
     const element = renderSettings(createInitialState([]), spies);
     const file = new File(['a'], 'list.csv', { type: 'text/csv' });
     attachFile(element, file, 'import-csv-input');
     q<HTMLButtonElement>(element, 'import-csv-button').click();
-    expect(spies.onImportCsv).toHaveBeenCalledWith(file);
+    expect(spies.onImportCsv).toHaveBeenCalledWith(file, []);
+  });
+
+  it('ラベルが1つも無ければ、ラベルの付け方の欄は出さない', () => {
+    const element = renderSettings(createInitialState([]), handlers());
+    expect(element.querySelector('[data-testid="csv-label-mode"]')).toBeNull();
+  });
+
+  it('ラベルがあれば、既定は「個別」で、ラベルの選択欄は出さない', () => {
+    const state = { ...createInitialState([]), labels: ['エリアA', 'エリアB'] };
+    const element = renderSettings(state, handlers());
+    expect(q<HTMLInputElement>(element, 'csv-label-mode-individual').checked).toBe(true);
+    expect(element.querySelector('[data-testid="csv-label-checkboxes"]')).toBeNull();
+  });
+
+  it('「全部に同じラベルを付ける」を選ぶと、ラベルのチェックボックスが出る', () => {
+    const state = { ...createInitialState([]), labels: ['エリアA', 'エリアB'] };
+    const element = renderSettings(state, handlers());
+    q<HTMLInputElement>(element, 'csv-label-mode-bulk').checked = true;
+    q<HTMLInputElement>(element, 'csv-label-mode-bulk').dispatchEvent(new Event('change'));
+    const checkboxes = element.querySelectorAll('[data-testid="csv-label-checkbox"]');
+    expect(checkboxes).toHaveLength(2);
+  });
+
+  it('「全部に同じラベルを付ける」で選んだラベルを付けて取り込む', () => {
+    const spies = handlers();
+    const state = { ...createInitialState([]), labels: ['エリアA', 'エリアB'] };
+    const element = renderSettings(state, spies);
+    q<HTMLInputElement>(element, 'csv-label-mode-bulk').checked = true;
+    q<HTMLInputElement>(element, 'csv-label-mode-bulk').dispatchEvent(new Event('change'));
+    const checkboxes = element.querySelectorAll<HTMLInputElement>('[data-testid="csv-label-checkbox"]');
+    checkboxes[0]!.checked = true;
+    const file = new File(['a'], 'list.csv', { type: 'text/csv' });
+    attachFile(element, file, 'import-csv-input');
+    q<HTMLButtonElement>(element, 'import-csv-button').click();
+    expect(spies.onImportCsv).toHaveBeenCalledWith(file, ['エリアA']);
+  });
+
+  it('「個別」に戻すと、チェックしていても取り込みには反映しない', () => {
+    const spies = handlers();
+    const state = { ...createInitialState([]), labels: ['エリアA'] };
+    const element = renderSettings(state, spies);
+    q<HTMLInputElement>(element, 'csv-label-mode-bulk').checked = true;
+    q<HTMLInputElement>(element, 'csv-label-mode-bulk').dispatchEvent(new Event('change'));
+    element.querySelector<HTMLInputElement>('[data-testid="csv-label-checkbox"]')!.checked = true;
+    q<HTMLInputElement>(element, 'csv-label-mode-individual').checked = true;
+    q<HTMLInputElement>(element, 'csv-label-mode-individual').dispatchEvent(new Event('change'));
+    const file = new File(['a'], 'list.csv', { type: 'text/csv' });
+    attachFile(element, file, 'import-csv-input');
+    q<HTMLButtonElement>(element, 'import-csv-button').click();
+    expect(spies.onImportCsv).toHaveBeenCalledWith(file, []);
+  });
+});
+
+describe('renderSettings: ラベルの管理', () => {
+  it('見出しを表示する', () => {
+    const element = renderSettings(createInitialState([]), handlers());
+    expect(element.textContent).toContain('ラベルの管理');
+  });
+
+  it('今あるラベルを一覧表示する', () => {
+    const state = { ...createInitialState([]), labels: ['エリアA', 'エリアB'] };
+    const element = renderSettings(state, handlers());
+    expect(element.textContent).toContain('エリアA');
+    expect(element.textContent).toContain('エリアB');
+  });
+
+  it('ラベルが1つも無ければ、その旨を案内する', () => {
+    const element = renderSettings(createInitialState([]), handlers());
+    expect(element.textContent).toContain('ラベルはまだありません');
+  });
+
+  it('名前を入力して追加ボタンを押すと onAddLabel が呼ばれる', () => {
+    const spies = handlers();
+    const element = renderSettings(createInitialState([]), spies);
+    const input = q<HTMLInputElement>(element, 'label-name-input');
+    input.value = 'エリアA';
+    q<HTMLButtonElement>(element, 'label-add-button').click();
+    expect(spies.onAddLabel).toHaveBeenCalledWith('エリアA');
+  });
+
+  it('空欄のまま追加ボタンを押しても、何も起きない', () => {
+    const spies = handlers();
+    const element = renderSettings(createInitialState([]), spies);
+    q<HTMLButtonElement>(element, 'label-add-button').click();
+    expect(spies.onAddLabel).not.toHaveBeenCalled();
+  });
+
+  it('各ラベルに削除ボタンがあり、押すとそのラベル名で onDeleteLabel が呼ばれる', () => {
+    const spies = handlers();
+    const state = { ...createInitialState([]), labels: ['エリアA', 'エリアB'] };
+    const element = renderSettings(state, spies);
+    const deleteButtons = element.querySelectorAll<HTMLButtonElement>('[data-testid="label-delete-button"]');
+    expect(deleteButtons).toHaveLength(2);
+    deleteButtons[1]!.click();
+    expect(spies.onDeleteLabel).toHaveBeenCalledWith('エリアB');
   });
 });

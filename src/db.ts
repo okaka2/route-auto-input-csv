@@ -2,8 +2,10 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Patient } from './types';
 
 const DB_NAME = 'route-auto-input-csv';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = 'patients';
+const META_STORE = 'meta';
+const LABELS_KEY = 'labels';
 
 interface RouteAutoInputDB extends DBSchema {
   patients: {
@@ -11,15 +13,25 @@ interface RouteAutoInputDB extends DBSchema {
     value: Patient;
     indexes: { createdAt: string };
   };
+  /** ラベルの一覧など、1件だけの設定的な値を置く場所。キーを直接指定して読み書きする。 */
+  meta: {
+    key: string;
+    value: string[];
+  };
 }
 
 let connection: Promise<IDBPDatabase<RouteAutoInputDB>> | null = null;
 
 function getDb(): Promise<IDBPDatabase<RouteAutoInputDB>> {
   connection ??= openDB<RouteAutoInputDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      const store = db.createObjectStore(STORE, { keyPath: 'id' });
-      store.createIndex('createdAt', 'createdAt');
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        const store = db.createObjectStore(STORE, { keyPath: 'id' });
+        store.createIndex('createdAt', 'createdAt');
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore(META_STORE);
+      }
     },
   });
   return connection;
@@ -38,11 +50,16 @@ export async function closeDbForTest(): Promise<void> {
   connection = null;
 }
 
+/** ラベル機能より前に保存された記録はlabelsを持たないため、読み出すときに補う。 */
+function normalizePatient(patient: Patient): Patient {
+  return patient.labels === undefined ? { ...patient, labels: [] } : patient;
+}
+
 /** 登録が新しい順に返す。 */
 export async function listPatients(): Promise<Patient[]> {
   const db = await getDb();
   const ascending = await db.getAllFromIndex(STORE, 'createdAt');
-  return ascending.reverse();
+  return ascending.reverse().map(normalizePatient);
 }
 
 export async function savePatient(patient: Patient): Promise<void> {
@@ -84,4 +101,17 @@ export async function mergePatients(patients: readonly Patient[]): Promise<void>
     await tx.store.put(patient);
   }
   await tx.done;
+}
+
+/** 今あるラベルの名前の一覧(追加した順)。 */
+export async function listLabels(): Promise<string[]> {
+  const db = await getDb();
+  const labels = await db.get(META_STORE, LABELS_KEY);
+  return labels ?? [];
+}
+
+/** ラベルの一覧を丸ごと置き換える。 */
+export async function saveLabels(labels: readonly string[]): Promise<void> {
+  const db = await getDb();
+  await db.put(META_STORE, [...labels], LABELS_KEY);
 }

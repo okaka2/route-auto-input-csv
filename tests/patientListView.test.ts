@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { APP_NAME } from '../src/appInfo';
 import { MAX_SELECTION } from '../src/config';
+import { labelColorIndex } from '../src/labelColor';
 import { createPatient } from '../src/patient';
-import { createInitialState, setSearchQuery, toggleSelection } from '../src/state';
+import { createInitialState, setSearchQuery, toggleLabelFilter, toggleSelection, withLabels } from '../src/state';
 import { renderPatientList, type PatientListHandlers } from '../src/views/patientListView';
-import type { Patient } from '../src/types';
+import { NO_LABEL_FILTER, type Patient } from '../src/types';
 
 const makePatients = (count: number): Patient[] =>
   Array.from({ length: count }, (_, i) => createPatient(`場所${i + 1}`, `東京都${i + 1}-1`));
@@ -15,6 +16,7 @@ const noopHandlers = (): PatientListHandlers => ({
   onToggleSelect: vi.fn(),
   onSortChange: vi.fn(),
   onToggleSelectAll: vi.fn(),
+  onToggleLabelFilter: vi.fn(),
   onNew: vi.fn(),
   onOpenMenu: vi.fn(),
   onOpenSettings: vi.fn(),
@@ -351,5 +353,115 @@ describe('renderPatientList: 全選択', () => {
     const element = renderPatientList(createInitialState(makePatients(2)), handlers);
     q<HTMLButtonElement>(element, 'select-all-button').click();
     expect(handlers.onToggleSelectAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('renderPatientList: 登録ボタン(並び替え・全選択と同じ並び)', () => {
+  it('「＋ 訪問先を登録」ボタンを、並び替え・全選択と同じ並びに出す', () => {
+    const handlers = noopHandlers();
+    const element = renderPatientList(createInitialState([]), handlers);
+    const button = q<HTMLButtonElement>(element, 'new-button');
+    expect(button.textContent).toBe('＋ 訪問先を登録');
+    expect(button.classList.contains('primary')).toBe(true);
+    expect(button.closest('.list-controls')).not.toBeNull();
+    button.click();
+    expect(handlers.onNew).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('renderPatientList: ラベルでの絞り込み', () => {
+  it('ラベルが1つも無ければ、ラベルのボタン自体を出さない', () => {
+    const element = renderPatientList(createInitialState([]), noopHandlers());
+    expect(element.querySelector('[data-testid="label-filter-button"]')).toBeNull();
+  });
+
+  it('ラベルがあれば、ボタンを押すとラベル(と「ラベルなし」)のチップが開く', () => {
+    const state = withLabels(createInitialState([]), ['エリアA', 'エリアB']);
+    const element = renderPatientList(state, noopHandlers());
+    expect(element.querySelector('.label-filter-panel')).toHaveProperty('hidden', true);
+
+    q<HTMLButtonElement>(element, 'label-filter-button').click();
+
+    const chips = [...element.querySelectorAll<HTMLElement>('[data-testid="label-filter-chip"]')];
+    expect(chips.map((chip) => chip.textContent)).toEqual(['エリアA', 'エリアB', 'ラベルなし']);
+  });
+
+  it('チップを押すと、そのラベル名で onToggleLabelFilter が呼ばれる', () => {
+    const handlers = noopHandlers();
+    const state = withLabels(createInitialState([]), ['エリアA']);
+    const element = renderPatientList(state, handlers);
+    q<HTMLButtonElement>(element, 'label-filter-button').click();
+    q<HTMLElement>(element, 'label-filter-chip').click();
+    expect(handlers.onToggleLabelFilter).toHaveBeenCalledWith('エリアA');
+  });
+
+  it('「ラベルなし」チップを押すと、NO_LABEL_FILTERで呼ばれる', () => {
+    const handlers = noopHandlers();
+    const state = withLabels(createInitialState([]), ['エリアA']);
+    const element = renderPatientList(state, handlers);
+    q<HTMLButtonElement>(element, 'label-filter-button').click();
+    const chips = element.querySelectorAll<HTMLElement>('[data-testid="label-filter-chip"]');
+    chips[chips.length - 1]!.click();
+    expect(handlers.onToggleLabelFilter).toHaveBeenCalledWith(NO_LABEL_FILTER);
+  });
+
+  it('選んでいるラベルのチップは選択中の見た目になる', () => {
+    let state = withLabels(createInitialState([]), ['エリアA', 'エリアB']);
+    state = toggleLabelFilter(state, 'エリアA');
+    const element = renderPatientList(state, noopHandlers());
+    q<HTMLButtonElement>(element, 'label-filter-button').click();
+    const chips = [...element.querySelectorAll<HTMLElement>('[data-testid="label-filter-chip"]')];
+    expect(chips[0]!.classList.contains('selected')).toBe(true);
+    expect(chips[1]!.classList.contains('selected')).toBe(false);
+  });
+
+  it('絞り込み中は、ラベルボタンが目立つ見た目になる', () => {
+    let state = withLabels(createInitialState([]), ['エリアA']);
+    state = toggleLabelFilter(state, 'エリアA');
+    const element = renderPatientList(state, noopHandlers());
+    expect(q<HTMLButtonElement>(element, 'label-filter-button').classList.contains('active')).toBe(true);
+  });
+});
+
+describe('renderPatientList: 行のラベル表示', () => {
+  it('ラベルが無い訪問先には、ラベルの行自体を出さない', () => {
+    const patients = [createPatient('場所1', '東京都1-1')];
+    const element = renderPatientList(createInitialState(patients), noopHandlers());
+    expect(element.querySelector('.label-badges')).toBeNull();
+  });
+
+  it('付いているラベルをバッジで表示する', () => {
+    const patients = [createPatient('場所1', '東京都1-1', new Date(), ['エリアA', 'エリアB'])];
+    const element = renderPatientList(createInitialState(patients), noopHandlers());
+    const badges = [...element.querySelectorAll('.label-badge')];
+    expect(badges.map((badge) => badge.textContent)).toEqual(['エリアA', 'エリアB']);
+  });
+
+  it('バッジには、名前から決まる色のクラスが付く', () => {
+    const patients = [createPatient('場所1', '東京都1-1', new Date(), ['エリアA'])];
+    const element = renderPatientList(createInitialState(patients), noopHandlers());
+    const badge = element.querySelector('.label-badge')!;
+    expect(badge.classList.contains(`label-color-${labelColorIndex('エリアA')}`)).toBe(true);
+  });
+
+  it('3件目以降は「+N」にまとめ、押すと残りが開く', () => {
+    const patients = [
+      createPatient('場所1', '東京都1-1', new Date(), ['a', 'b', 'c', 'd']),
+    ];
+    const element = renderPatientList(createInitialState(patients), noopHandlers());
+    const visibleBadges = () => [...element.querySelectorAll('.label-badge')].map((b) => b.textContent);
+    expect(visibleBadges()).toEqual(['a', 'b']);
+    const more = q<HTMLElement>(element, 'label-badge-more');
+    expect(more.textContent).toBe('+2');
+
+    more.click();
+
+    expect(visibleBadges()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('ラベルが2件以下なら「+N」は出さない', () => {
+    const patients = [createPatient('場所1', '東京都1-1', new Date(), ['a', 'b'])];
+    const element = renderPatientList(createInitialState(patients), noopHandlers());
+    expect(element.querySelector('[data-testid="label-badge-more"]')).toBeNull();
   });
 });

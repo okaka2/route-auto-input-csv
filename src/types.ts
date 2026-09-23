@@ -2,6 +2,8 @@ export type Patient = {
   id: string;
   name: string;
   address: string;
+  /** 付いているラベルの名前。複数付けられる。空配列 = ラベルなし。 */
+  labels: string[];
   /** ISO 8601 */
   createdAt: string;
   /** ISO 8601 */
@@ -33,7 +35,14 @@ export type AppState = {
   selectedIds: string[];
   searchQuery: string;
   sortOrder: SortOrder;
+  /** 今ある(定義済みの)ラベルの名前。追加した順。 */
+  labels: string[];
+  /** 一覧の絞り込みで選んでいるラベル名。NO_LABEL_FILTERは「ラベルなし」を選んでいる印。空 = 絞り込みなし(全件)。 */
+  labelFilter: string[];
   message: Message | null;
   /** 開いているダイアログ。なければ null。 */
   dialog: Dialog | null;
 };
+
+/** labelFilterの中で「ラベルなし」を表す特別な値。実際のラベル名とは絶対に重ならない。 */
+export const NO_LABEL_FILTER = '\u0000no-label\u0000';

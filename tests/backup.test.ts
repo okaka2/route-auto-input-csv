@@ -3,7 +3,7 @@ import { BACKUP_VERSION, parseBackup, serializeBackup } from '../src/backup';
 import { createPatient } from '../src/patient';
 
 const samplePatients = () => [
-  createPatient('山田 太郎', '東京都千代田区1-1'),
+  createPatient('山田 太郎', '東京都千代田区1-1', new Date(), ['エリアA']),
   createPatient('鈴木 花子', '大阪市北区2-2'),
 ];
 
@@ -15,12 +15,45 @@ describe('serializeBackup', () => {
     expect(json.exportedAt).toBe('2026-09-02T09:00:00.000Z');
     expect(json.patients).toHaveLength(2);
   });
+
+  it('定義済みラベルの一覧も含む', () => {
+    const json = JSON.parse(serializeBackup([], new Date(), ['エリアA', 'エリアB']));
+    expect(json.labelDefinitions).toEqual(['エリアA', 'エリアB']);
+  });
+
+  it('ラベルを省略すると空配列になる', () => {
+    const json = JSON.parse(serializeBackup([]));
+    expect(json.labelDefinitions).toEqual([]);
+  });
 });
 
 describe('parseBackup', () => {
   it('書き出したものを読み込むと同じ患者一覧に戻る', () => {
     const patients = samplePatients();
-    expect(parseBackup(serializeBackup(patients))).toEqual(patients);
+    expect(parseBackup(serializeBackup(patients)).patients).toEqual(patients);
+  });
+
+  it('書き出した定義済みラベルの一覧も読み戻せる', () => {
+    const text = serializeBackup([], new Date(), ['エリアA', 'エリアB']);
+    expect(parseBackup(text).labelDefinitions).toEqual(['エリアA', 'エリアB']);
+  });
+
+  it('ラベル機能より前のバックアップ(labelDefinitionsが無い)も読み込め、空配列になる', () => {
+    const text = JSON.stringify({
+      version: BACKUP_VERSION,
+      exportedAt: '',
+      patients: [],
+    });
+    expect(parseBackup(text).labelDefinitions).toEqual([]);
+  });
+
+  it('ラベル機能より前の患者データ(labelsが無い)も読み込め、空配列になる', () => {
+    const text = JSON.stringify({
+      version: BACKUP_VERSION,
+      exportedAt: '',
+      patients: [{ id: 'a', name: '山田', address: '東京都', createdAt: 'x', updatedAt: 'x' }],
+    });
+    expect(parseBackup(text).patients[0]?.labels).toEqual([]);
   });
 
   it('JSONとして壊れていれば例外を投げる', () => {
@@ -63,6 +96,6 @@ describe('parseBackup', () => {
   });
 
   it('患者0件のファイルは空配列として読み込める', () => {
-    expect(parseBackup(serializeBackup([]))).toEqual([]);
+    expect(parseBackup(serializeBackup([])).patients).toEqual([]);
   });
 });
